@@ -37,6 +37,7 @@ void free_record(resource_record_t *record) {
   for (int i = 0; i < name.level_count; i++) {
     free(name.domains[i]);
   }
+  free(record);
 }
 
 void parse_header(char *buf, dns_header_t *header) {
