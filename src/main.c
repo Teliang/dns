@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
 
     char *key = build_key(record);
 
-    free_record(request.record);
+    free_record(record);
     free(record);
 
     cache_result_t result = get_from_cache(key);
@@ -114,7 +114,6 @@ int main(int argc, char **argv) {
 
     // free(response);
 
-    // this is nessecery, but why?
     free(key);
 
     msg_len = sendto(sockfd, response, response_size, 0,

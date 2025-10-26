@@ -8,7 +8,9 @@
 record_t *records = NULL;
 
 char *build_key(resource_record_t *record) {
-  char *key = calloc(50, sizeof(char));
+  // TODO
+  char *key = malloc(50);
+  memset(key, 0, 50);
 
   resource_name_t name = record->name;
   for (int i = 0; i < name.level_count; i++) {
@@ -33,30 +35,36 @@ char *build_key(resource_record_t *record) {
   strcat(key, "_");
   strcat(key, char_array);
 
-  printf("key: %s\n", key);
+  printf("build key: %s\n", key);
 
   return key;
 }
 
+void count_hash() {
+  unsigned int hash_count = HASH_COUNT(records);
+  printf("hash_count is %u \n", hash_count);
+}
+
 cache_result_t get_from_cache(char *key) {
   cache_result_t result = {NO_CACHE, NULL};
-  record_t l, *p;
-  l.key = key;
+  record_t *p;
   HASH_FIND_STR(records, key, p);
   if (p) {
-    printf("found %p\n", p);
-    printf("found, key: %s\n", p->key);
     result.status = HAS_CACHE;
     result.response = p->value;
   }
+
+  count_hash();
+
   return result;
 }
 
 void add_to_cache(char *key, char *response, int len) {
+  // TODO if exist
   record_t *r = (record_t *)malloc(sizeof *r);
   cache_response_t value = {response, len};
   memset(r, 0, sizeof *r);
-  r->key = key;
+  r->key = strdup(key);
   r->value = value;
   HASH_ADD_KEYPTR(hh, records, r->key, strlen(r->key), r);
 }
