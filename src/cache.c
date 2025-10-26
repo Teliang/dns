@@ -3,52 +3,60 @@
 #include "uthash.h"
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 record_t *records = NULL;
 
-cache_result_t get_from_cache(resource_record_t *record) {
+char *build_key(resource_record_t *record) {
+  char *key = calloc(50, sizeof(char));
+
+  resource_name_t name = record->name;
+  for (int i = 0; i < name.level_count; i++) {
+    strcat(key, name.domains[i]);
+    if (i != name.level_count - 1) {
+      strcat(key, ".");
+    }
+  }
+
+  char char_array[10]; // Allocate enough space for the number and null
+                       // terminator
+                       //
+  // Convert to decimal string
+  sprintf(char_array, "%d", record->type);
+
+  strcat(key, "_");
+  strcat(key, char_array);
+
+  // Convert to decimal string
+  sprintf(char_array, "%d", record->clazz);
+
+  strcat(key, "_");
+  strcat(key, char_array);
+
+  printf("key: %s\n", key);
+
+  return key;
+}
+
+cache_result_t get_from_cache(char *key) {
   cache_result_t result = {NO_CACHE, NULL};
   record_t l, *p;
-  l.key = *record;
-  HASH_FIND(hh, records, &l.key, sizeof(resource_record_t), p);
+  l.key = key;
+  HASH_FIND_STR(records, key, p);
   if (p) {
     printf("found %p\n", p);
+    printf("found, key: %s\n", p->key);
     result.status = HAS_CACHE;
     result.response = p->value;
   }
   return result;
 }
 
-void add_to_cache(resource_record_t *record, char *response, int len) {
-  record_t *r;
-  r = (record_t *)malloc(sizeof *r);
+void add_to_cache(char *key, char *response, int len) {
+  record_t *r = (record_t *)malloc(sizeof *r);
   cache_response_t value = {response, len};
   memset(r, 0, sizeof *r);
-  r->key = *record;
+  r->key = key;
   r->value = value;
-  HASH_ADD(hh, records, key, sizeof(resource_record_t), r);
+  HASH_ADD_KEYPTR(hh, records, r->key, strlen(r->key), r);
 }
-
-// TODO
-
-unsigned key_hash(Key *key) {
-  unsigned hash = 100;
-  hash += key->type;
-  hash += key->clazz;
-  return hash;
-}
-
-bool key_equal(Key *a, Key *b) {
-  if (a->type != b->type) {
-    return false;
-  }
-  if (a->clazz != b->clazz) {
-    return false;
-  }
-  return true;
-}
-
-#undef HASH_KEYCMP
-#undef HASH_FUNCTION
-#define HASH_FUNCTION(s, len, hashv) (hashv) = key_hash((Key *)s)
-#define HASH_KEYCMP(a, b, len) (!key_equal((Key *)a, (Key *)b))

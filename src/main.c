@@ -92,7 +92,12 @@ int main(int argc, char **argv) {
     dns_request_t request = {&header, record};
     handle_request(msg, msg_len, &request);
 
-    cache_result_t result = get_from_cache(record);
+    char *key = build_key(record);
+
+    free_record(request.record);
+    free(record);
+
+    cache_result_t result = get_from_cache(key);
 
     char *response = NULL;
     int response_size = 0;
@@ -104,16 +109,18 @@ int main(int argc, char **argv) {
     } else {
       printf("NO_CACHE\n");
       response_size = send_to_server(msg, msg_len, &response);
-      add_to_cache(record, response, response_size);
+      add_to_cache(key, response, response_size);
     }
+
+    // free(response);
+
+    // this is nessecery, but why?
+    free(key);
 
     msg_len = sendto(sockfd, response, response_size, 0,
                      (struct sockaddr *)&clientaddr, clientlen);
     if (msg_len < 0)
       error("ERROR in sendto");
-    // free_record(request.record);
-    // free(record);
-    // free(response);
     free(msg);
   }
 }

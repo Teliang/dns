@@ -9,7 +9,7 @@ typedef struct cache_response {
 typedef resource_record_t Key;
 
 typedef struct {
-  Key key;
+  const char *key;
   cache_response_t value;
   UT_hash_handle hh;
 } record_t;
@@ -21,6 +21,8 @@ typedef struct cache_result {
   cache_response_t response;
 } cache_result_t;
 
-cache_result_t get_from_cache(resource_record_t *record);
+cache_result_t get_from_cache(char *key);
 
-void add_to_cache(resource_record_t *record, char *response, int len);
+void add_to_cache(char *key, char *response, int len);
+
+char *build_key(resource_record_t *record);
