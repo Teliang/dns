@@ -48,10 +48,13 @@ int send_to_server(char *buf, int length, char **rec) {
   if (n < 0)
     error("ERROR in recvfrom");
 
+  printf("recv from server: ");
   for (int i = 0; i < n; i++) {
     printf("%x", (*rec)[i]);
   }
   printf("\n");
+
+  close(sockfd);
 
   return n;
 }

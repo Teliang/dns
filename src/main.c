@@ -1,5 +1,7 @@
+#include "cache.h"
 #include "client.h"
 #include "common.h"
+#include "parse_request.h"
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -13,118 +15,16 @@
 #define BUFSIZE 1024
 #define SERVER_PORT 53
 
-typedef struct dns_header {
-  uint16_t transaction_ID;
-  uint16_t flag;
-  uint16_t number_of_questions;
-  uint16_t number_of_answers;
-  uint16_t number_of_authority_RRs;
-  uint16_t number_of_additional_RRs;
-} dns_header_t;
-
-typedef struct resource_name {
-  char *domains[8];
-  int level_count;
-} resource_name_t;
-
-typedef struct resource_record {
-  resource_name_t name;
-  uint16_t type;
-  uint16_t class;
-} resource_record_t;
-
-void convert_big_little_endian(uint16_t *num) {
-  *num = (*num >> 8) | (*num << 8);
-}
-
-void print_header(dns_header_t *header) {
-  printf("transaction_ID: %d\n", header->transaction_ID);
-  printf("flag: %d\n", header->flag);
-  printf("number_of_questions: %d\n", header->number_of_questions);
-  printf("number_of_answers: %d\n", header->number_of_answers);
-  printf("number_of_authority_RRs: %d\n", header->number_of_authority_RRs);
-  printf("number_of_additional_RRs: %d\n", header->number_of_additional_RRs);
-}
-
-void print_record(resource_record_t *record) {
-  printf("record doman count: %d\n", record->name.level_count);
-  printf("type: %d\n", record->type);
-  printf("class: %d\n", record->class);
-}
-
-void free_record(resource_record_t *record) {
-  resource_name_t name = record->name;
-  for (int i = 0; i < name.level_count; i++) {
-    free(name.domains[i]);
-  }
-}
-
-void parse_header(dns_header_t *header) {}
-
-void parse_record(resource_record_t *record) {}
-
-void handle_request(char *buf, int n) {
-  printf("server received %d bytes\n", n);
-  for (int i = 0; i < n; ++i) {
-    printf("%x", buf[i]);
-  }
-  printf("\n");
-
-  dns_header_t header;
-  memcpy(&header, buf, sizeof(header));
-  // TODO
-  convert_big_little_endian(&header.number_of_questions);
-
-  char length;
-  resource_record_t record = {};
-  int read_postion = sizeof(header);
-  while (1) {
-    memcpy(&length, buf + read_postion, sizeof(length));
-    read_postion++;
-    if (!length) {
-      break;
-    }
-    char *domain = malloc(length + 1);
-
-    memcpy(domain, buf + read_postion, length);
-    read_postion += length;
-    domain[length] = 0x00;
-    record.name.domains[record.name.level_count++] = domain;
-  };
-
-  memcpy(&record.type, buf + read_postion, sizeof(record.type));
-  read_postion += sizeof(record.type);
-  // TODO
-  convert_big_little_endian(&record.type);
-
-  memcpy(&record.class, buf + read_postion, sizeof(record.class));
-  // TODO
-  convert_big_little_endian(&record.class);
-
-  print_header(&header);
-  print_record(&record);
-
-  free_record(&record);
-}
-
 int main(int argc, char **argv) {
   int sockfd;                    /* socket */
   unsigned int clientlen;        /* byte size of client's address */
   struct sockaddr_in serveraddr; /* server's addr */
   struct sockaddr_in clientaddr; /* client addr */
   struct hostent *hostp;         /* client host info */
-  char *buf;                     /* message buf */
+  char *msg;                     /* message buf */
   char *hostaddrp;               /* dotted decimal host addr string */
   int optval;                    /* flag value for setsockopt */
-  int n;                         /* message byte size */
-
-  /*
-   * check command line arguments
-   */
-  if (argc != 2) {
-    fprintf(stderr, "usage: %s <port>\n", argv[0]);
-    exit(1);
-  }
+  int msg_len;                   /* message byte size */
 
   /*
    * socket: create the parent socket
@@ -157,14 +57,20 @@ int main(int argc, char **argv) {
     error("ERROR on binding");
 
   clientlen = sizeof(clientaddr);
+  int request_count = 0;
+
   while (1) {
+    printf("\n");
+    printf("===== request count is: %d =====\n", request_count);
+    request_count++;
+
     /*
      * recvfrom: receive a UDP datagram from a client
      */
-    buf = malloc(BUFSIZE);
-    n = recvfrom(sockfd, buf, BUFSIZE, 0, (struct sockaddr *)&clientaddr,
-                 &clientlen);
-    if (n < 0)
+    msg = malloc(BUFSIZE);
+    msg_len = recvfrom(sockfd, msg, BUFSIZE, 0, (struct sockaddr *)&clientaddr,
+                       &clientlen);
+    if (msg_len < 0)
       error("ERROR in recvfrom");
 
     /*
@@ -178,17 +84,36 @@ int main(int argc, char **argv) {
     if (hostaddrp == NULL)
       error("ERROR on inet_ntoa\n");
 
-    handle_request(buf, n);
+    dns_header_t header = {};
+    resource_record_t *record = calloc(1, sizeof(resource_record_t));
+    if (!record)
+      error("alloc record");
+
+    dns_request_t request = {&header, record};
+    handle_request(msg, msg_len, &request);
+
+    cache_result_t result = get_from_cache(record);
 
     char *response = NULL;
-    int response_size = send_to_server(buf, n, &response);
+    int response_size = 0;
 
-    n = sendto(sockfd, response, response_size, 0,
-               (struct sockaddr *)&clientaddr, clientlen);
+    if (result.status == HAS_CACHE) {
+      printf("HAS_CACHE\n");
+      response_size = result.response.len;
+      response = result.response.response;
+    } else {
+      printf("NO_CACHE\n");
+      response_size = send_to_server(msg, msg_len, &response);
+      add_to_cache(record, response, response_size);
+    }
 
-    free(response);
-    free(buf);
-    if (n < 0)
+    msg_len = sendto(sockfd, response, response_size, 0,
+                     (struct sockaddr *)&clientaddr, clientlen);
+    if (msg_len < 0)
       error("ERROR in sendto");
+    // free_record(request.record);
+    // free(record);
+    // free(response);
+    free(msg);
   }
 }
