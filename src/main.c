@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
   /*
    * build the server's Internet address
    */
-  bzero((char *)&serveraddr, sizeof(serveraddr));
+  memset(&serveraddr, 0, sizeof(serveraddr));
   serveraddr.sin_family = AF_INET;
   serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
   serveraddr.sin_port = htons(SERVER_PORT);
@@ -70,19 +70,9 @@ int main(int argc, char **argv) {
     msg = malloc(BUFSIZE);
     msg_len = recvfrom(sockfd, msg, BUFSIZE, 0, (struct sockaddr *)&clientaddr,
                        &clientlen);
+
     if (msg_len < 0)
       error("ERROR in recvfrom");
-
-    /*
-     * gethostbyaddr: determine who sent the datagram
-     */
-    hostp = gethostbyaddr((const char *)&clientaddr.sin_addr.s_addr,
-                          sizeof(clientaddr.sin_addr.s_addr), AF_INET);
-    if (hostp == NULL)
-      error("ERROR on gethostbyaddr");
-    hostaddrp = inet_ntoa(clientaddr.sin_addr);
-    if (hostaddrp == NULL)
-      error("ERROR on inet_ntoa\n");
 
     dns_header_t header = {};
     resource_record_t *record = calloc(1, sizeof(resource_record_t));
